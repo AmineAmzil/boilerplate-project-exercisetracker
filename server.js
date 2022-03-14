@@ -48,6 +48,18 @@ app.post("/api/users", (req, res) => {
     });
 });
 
+app.get("/api/users", async (req, res) => {
+  User.find({}, { _id: 1, username: 1 })
+    .then((users) => {
+      res.json(users);
+    })
+    .catch((error) => {
+      res.json({
+        error: error.message,
+      });
+    });
+});
+
 app.post("/api/users/:id/exercises", async (req, res) => {
   const id = req.params.id;
   const { _id, description, duration, date } = req.body;
