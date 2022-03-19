@@ -10,7 +10,7 @@ const exerciseSchema = new Schema(
       type: Number,
     },
     date: {
-      type: Number,
+      type: Date,
     },
   },
   { versionKey: false },
@@ -20,10 +20,10 @@ const userSchema = new Schema(
   {
     username: {
       type: String,
+      required: true,
     },
     count: {
       type: Number,
-      required: true,
       default: 0,
     },
     log: [exerciseSchema],

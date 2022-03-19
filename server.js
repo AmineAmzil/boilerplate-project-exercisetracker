@@ -33,6 +33,8 @@ app.get("/", (req, res) => {
 app.post("/api/users", (req, res) => {
   const username = req.body.username;
 
+  console.log(req.body);
+
   const user = new User({
     username: username,
   });
@@ -48,7 +50,7 @@ app.post("/api/users", (req, res) => {
     });
 });
 
-app.get("/api/users", async (req, res) => {
+app.get("/api/users", (req, res) => {
   User.find({}, { _id: 1, username: 1 })
     .then((users) => {
       res.json(users);
@@ -60,11 +62,11 @@ app.get("/api/users", async (req, res) => {
     });
 });
 
-app.post("/api/users/:id/exercises", async (req, res) => {
-  const id = req.params.id;
-  const { _id, description, duration, date } = req.body;
+app.post("/api/users/:_id/exercises", (req, res) => {
+  const _id = req.params._id;
+  const { id, description, duration, date } = req.body;
 
-  User.findById(id)
+  User.findById(_id)
     .then((user) => {
       if (isNaN(duration)) {
         console.log("Bad duration");
@@ -79,12 +81,10 @@ app.post("/api/users/:id/exercises", async (req, res) => {
         throw new Error("Description is empty.");
       }
 
-      const tmpDate = date_fns.parseISO(date);
-
       const exercise = {
         description: description,
         duration: parseInt(duration),
-        date: tmpDate.getTime(),
+        date: new Date(date),
       };
 
       user.log.push(exercise);
@@ -95,11 +95,11 @@ app.post("/api/users/:id/exercises", async (req, res) => {
         .then((updated) => {
           exercise._id = updated._id;
           exercise.username = updated.username;
-          exercise.date = tmpDate.toDateString();
+          exercise.date = exercise.date.toDateString();
           res.json(exercise);
         })
-        .catch((e) => {
-          throw new Error(e.message);
+        .catch((err) => {
+          throw new Error(err.message);
         });
     })
     .catch((error) => {
@@ -109,34 +109,35 @@ app.post("/api/users/:id/exercises", async (req, res) => {
     });
 });
 
-app.get("/api/users/:id/logs", async (req, res) => {
-  const { id } = req.params;
+app.get("/api/users/:_id/logs", (req, res) => {
+  const { _id } = req.params;
   const { from, to, limit } = req.query;
 
-  User.findById(id)
+  User.findById(_id)
     .then((user) => {
       const logs = user.log
         .filter(
           function (e) {
-            if (fromHelper(e.date, from) && toHelper(e.date, to) && limitHelper(this.count, limit)) {
-              this.count++;
+            //
+            if (fromHelper(e.date, from) && toHelper(e.date, to) && limitHelper(this.c, limit)) {
+              this.c++;
               return true;
             }
             return false;
           },
-          { count: 0 },
+          { c: 0 },
         )
-        .map(function (e) {
+        .map((e) => {
           return {
             description: e.description,
             duration: e.duration,
-            date: new Date(e.date).toDateString(),
+            date: e.date.toDateString(),
           };
         });
 
       const response = {
         username: user.username,
-        count: logs.length,
+        count: user.log.length,
         _id: user._id,
         log: logs,
       };
@@ -168,18 +169,16 @@ function checkDate(date) {
 
 function fromHelper(date, from) {
   if (checkDate(from)) {
-    const fromDate = date_fns.parseISO(from).getTime();
-    // console.log({ date, fromDate });
-    return date >= fromDate;
+    const r = date_fns.compareAsc(new Date(date), new Date(from));
+    return r >= 0;
   }
   return true;
 }
 
 function toHelper(date, to) {
   if (checkDate(to)) {
-    const toDate = date_fns.parseISO(to).getTime();
-    // console.log({ date, toDate });
-    return date < toDate;
+    const r = date_fns.compareAsc(new Date(date), new Date(to));
+    return r <= 0;
   }
   return true;
 }
