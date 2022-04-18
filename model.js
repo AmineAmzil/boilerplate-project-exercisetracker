@@ -1,36 +1,18 @@
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 
-const exerciseSchema = new Schema(
-  {
-    description: {
-      type: String,
-    },
-    duration: {
-      type: Number,
-    },
-    date: {
-      type: Date,
-    },
+const userSchema = new Schema({
+  username: {
+    type: String,
+    required: true,
   },
-  { versionKey: false },
-);
-
-const userSchema = new Schema(
-  {
-    username: {
-      type: String,
-      required: true,
-    },
-    count: {
-      type: Number,
-      default: 0,
-    },
-    log: [exerciseSchema],
+  count: {
+    type: Number,
+    default: 0,
   },
-  { versionKey: false },
-);
+  log: [],
+});
 
 const User = mongoose.model("User", userSchema);
 
-exports.User = User;
+module.exports = User;

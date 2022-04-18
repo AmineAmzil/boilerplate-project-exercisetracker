@@ -1,17 +1,19 @@
 const express = require("express");
 const date_fns = require("date-fns");
-
 const app = express();
 const cors = require("cors");
 const mongoose = require("mongoose");
-const { User } = require("./model");
+const User = require("./model");
+require("dotenv").config();
 
 ("use strict");
 
-require("dotenv").config();
+const DB_LINK =
+  process.env.DB_LINK ||
+  "mongodb://127.0.0.1:27017/exerciseTracker?directConnection=true&serverSelectionTimeoutMS=2000&appName=mongosh+1.3.1";
 
 async function main() {
-  await mongoose.connect(process.env.DB_LINK);
+  await mongoose.connect(DB_LINK);
 }
 
 main().catch((err) => {
@@ -30,126 +32,135 @@ app.get("/", (req, res) => {
   res.sendFile(__dirname + "/views/index.html");
 });
 
-app.post("/api/users", (req, res) => {
-  const username = req.body.username;
+//  GET ALL USERS
 
-  console.log(req.body);
-
-  const user = new User({
-    username: username,
-  });
-
-  user
-    .save()
-    .then((result) => {
-      const { username, _id } = result;
-      res.json({ username, _id });
-    })
-    .catch((err) => {
-      res.json(err);
-    });
-});
-
-app.get("/api/users", (req, res) => {
-  User.find({}, { _id: 1, username: 1 })
-    .then((users) => {
-      res.json(users);
-    })
-    .catch((error) => {
-      res.json({
-        error: error.message,
-      });
-    });
-});
-
-app.post("/api/users/:_id/exercises", (req, res) => {
-  const _id = req.params._id;
-  const { id, description, duration, date } = req.body;
-
-  User.findById(_id)
-    .then((user) => {
-      if (isNaN(duration)) {
-        console.log("Bad duration");
-        throw new Error("Duration should be a number representing the minutes.");
-      }
-
-      if (!checkDate(date)) {
-        throw new Error("Wrong date format. Date formaat is yyyy-MM-dd");
-      }
-
-      if (!description) {
-        throw new Error("Description is empty.");
-      }
-
-      const exercise = {
-        description: description,
-        duration: parseInt(duration),
-        date: new Date(date),
-      };
-
-      user.log.push(exercise);
-      user.count++;
-
-      user
-        .save()
-        .then((updated) => {
-          exercise._id = updated._id;
-          exercise.username = updated.username;
-          exercise.date = exercise.date.toDateString();
-          res.json(exercise);
-        })
-        .catch((err) => {
-          throw new Error(err.message);
+app.get(
+  "/api/users",
+  catchAsync(async (req, res) => {
+    await User.find({}, { log: 0, count: 0 })
+      .then((users) => {
+        res.send(users);
+      })
+      .catch((error) => {
+        res.send({
+          error: error.message,
         });
-    })
-    .catch((error) => {
-      res.json({
-        error: error.message,
       });
+  }),
+);
+
+// ADD A USERS
+
+app.post(
+  "/api/users",
+  catchAsync(async (req, res) => {
+    const { username } = req.body;
+
+    const user = new User({
+      username: username,
     });
-});
 
-app.get("/api/users/:_id/logs", (req, res) => {
-  const { _id } = req.params;
-  const { from, to, limit } = req.query;
+    user
+      .save()
+      .then((result) => {
+        const { username, _id } = result;
+        res.send({ username, _id });
+      })
+      .catch((err) => {
+        res.send(err);
+      });
+  }),
+);
 
-  User.findById(_id)
-    .then((user) => {
-      const logs = user.log
-        .filter(
-          function (e) {
-            //
-            if (fromHelper(e.date, from) && toHelper(e.date, to) && limitHelper(this.c, limit)) {
-              this.c++;
-              return true;
-            }
-            return false;
-          },
-          { c: 0 },
-        )
-        .map((e) => {
-          return {
-            description: e.description,
-            duration: e.duration,
-            date: e.date.toDateString(),
-          };
+// ADD EXERCISE
+
+app.post(
+  "/api/users/:_id/exercises",
+  catchAsync(async (req, res) => {
+    const _id = req.params._id;
+    const { id, description, duration, date } = req.body;
+
+    if (isNaN(duration)) {
+      console.log("Bad duration");
+      throw new Error("Duration should be a number representing the minutes.");
+    }
+
+    if (!checkDate(date)) {
+      throw new Error("Wrong date format. Date format is yyyy-MM-dd");
+    }
+
+    if (!description) {
+      throw new Error("Description is empty.");
+    }
+
+    const exercise = {
+      description: description,
+      duration: parseInt(duration),
+      date: new Date(date),
+    };
+
+    const user = await User.findById(_id);
+
+    user.log.push(exercise);
+    user.count++;
+
+    user
+      .save()
+      .then((updated) => {
+        exercise._id = updated._id;
+        exercise.username = updated.username;
+        exercise.date = exercise.date.toDateString();
+        res.send(exercise);
+      })
+      .catch((err) => {
+        next(new Error(err.message));
+      });
+  }),
+);
+
+app.get(
+  "/api/users/:_id/logs",
+  catchAsync(async (req, res) => {
+    const { _id } = req.params;
+    const { from, to, limit } = req.query;
+
+    User.findById(_id)
+      .then((user) => {
+        const logs = user.log
+          .filter(
+            function (e) {
+              if (fromHelper(e.date, from) && toHelper(e.date, to) && limitHelper(this.c, limit)) {
+                this.c++;
+                return true;
+              }
+              return false;
+            },
+            { c: 0 },
+          )
+          .map((e) => {
+            return {
+              description: e.description,
+              duration: e.duration,
+              date: e.date.toDateString(),
+            };
+          });
+
+        const response = {
+          username: user.username,
+          count: user.log.length,
+          _id: user._id,
+          log: logs,
+        };
+
+        res.json(response);
+      })
+      .catch((error) => {
+        res.json({
+          error: error.message,
         });
-
-      const response = {
-        username: user.username,
-        count: user.log.length,
-        _id: user._id,
-        log: logs,
-      };
-
-      res.json(response);
-    })
-    .catch((error) => {
-      res.json({
-        error: error.message,
       });
-    });
-});
+  }),
+);
 
 function checkDate(date) {
   if (!date) {
@@ -169,7 +180,7 @@ function checkDate(date) {
 
 function fromHelper(date, from) {
   if (checkDate(from)) {
-    const r = date_fns.compareAsc(new Date(date), new Date(from));
+    const r = date_fns.compareAsc(date, new Date(from));
     return r >= 0;
   }
   return true;
@@ -177,7 +188,7 @@ function fromHelper(date, from) {
 
 function toHelper(date, to) {
   if (checkDate(to)) {
-    const r = date_fns.compareAsc(new Date(date), new Date(to));
+    const r = date_fns.compareAsc(date, new Date(to));
     return r <= 0;
   }
   return true;
@@ -189,6 +200,17 @@ function limitHelper(count, limit) {
   }
   return count < limit;
 }
+
+function catchAsync(fun) {
+  return (req, res, next) => {
+    fun(req, res, next).catch((e) => next(e));
+  };
+}
+
+app.use((err, req, res, next) => {
+  // console.error(err.stack);
+  res.status(500).send(err.message);
+});
 
 const listener = app.listen(process.env.PORT || 3000, () => {
   console.log("Your app is listening on port " + listener.address().port);
